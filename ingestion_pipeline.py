@@ -1,106 +1,85 @@
 import os
-from langchain_community.document_loaders import TextLoader, DirectoryLoader
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_text_splitters import CharacterTextSplitter
+from langchain_community.document_loaders import TextLoader, DirectoryLoader, PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from dotenv import load_dotenv
+from utils import get_embeddings, PERSIST_DIR
 
 load_dotenv()
 
-def load_documents(docs_path="docs"):
-    """Load all text files from the docs directory"""
-    print(f"Loading documents from {docs_path}...")
-    
-    # Check if docs directory exists
+
+def load_documents(docs_path: str = "docs") -> list:
+    print(f"Loading documents from '{docs_path}'...")
+
     if not os.path.exists(docs_path):
-        raise FileNotFoundError(f"The directory {docs_path} does not exist. Please create it and add your company files.")
-    
-    # Load all .txt files from the docs directory
-    loader = DirectoryLoader(
+        raise FileNotFoundError(f"Directory '{docs_path}' not found. Create it and add your documents.")
+
+    txt_loader = DirectoryLoader(
         path=docs_path,
         glob="*.txt",
         loader_cls=TextLoader,
-        loader_kwargs={"encoding": "utf-8", "autodetect_encoding": True}
+        loader_kwargs={"encoding": "utf-8", "autodetect_encoding": True},
     )
-    
-    documents = loader.load()
-    
-    if len(documents) == 0:
-        raise FileNotFoundError(f"No .txt files found in {docs_path}. Please add your company documents.")
-    
-   
-    for i, doc in enumerate(documents[:2]):  # Show first 2 documents
-        print(f"\nDocument {i+1}:")
-        print(f"  Source: {doc.metadata['source']}")
-        print(f"  Content length: {len(doc.page_content)} characters")
-        print(f"  Content preview: {doc.page_content[:100]}...")
-        print(f"  metadata: {doc.metadata}")
+    pdf_loader = DirectoryLoader(
+        path=docs_path,
+        glob="*.pdf",
+        loader_cls=PyPDFLoader,
+    )
+
+    documents = txt_loader.load() + pdf_loader.load()
+
+    if not documents:
+        raise FileNotFoundError(f"No .txt or .pdf files found in '{docs_path}'.")
+
+    print(f"Loaded {len(documents)} document(s):")
+    for doc in documents[:5]:
+        print(f"  {doc.metadata.get('source', 'unknown')} — {len(doc.page_content)} chars")
 
     return documents
-def split_documents(documents, chunk_size=800, chunk_overlap=0):
-    """Split documents into smaller chunks with overlap"""
+
+
+def split_documents(documents: list, chunk_size: int = 800, chunk_overlap: int = 150) -> list:
     print("Splitting documents into chunks...")
-    
-    text_splitter = CharacterTextSplitter(
-        chunk_size=chunk_size, 
-        chunk_overlap=chunk_overlap
+
+    splitter = RecursiveCharacterTextSplitter(
+        separators=["\n\n", "\n", ". ", " ", ""],
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
-    
-    chunks = text_splitter.split_documents(documents)
-    
-    if chunks:
-    
-        for i, chunk in enumerate(chunks[:5]):
-            print(f"\n--- Chunk {i+1} ---")
-            print(f"Source: {chunk.metadata['source']}")
-            print(f"Length: {len(chunk.page_content)} characters")
-            print(f"Content:")
-            print(chunk.page_content)
-            print("-" * 50)
-        
-        if len(chunks) > 5:
-            print(f"\n... and {len(chunks) - 5} more chunks")
-    
+
+    chunks = splitter.split_documents(documents)
+    print(f"Created {len(chunks)} chunks.")
+
+    for i, chunk in enumerate(chunks[:3]):
+        print(f"\n--- Chunk {i + 1} ---")
+        print(f"Source: {chunk.metadata.get('source', 'unknown')}")
+        print(f"Length: {len(chunk.page_content)} chars")
+        print(chunk.page_content[:200])
+
     return chunks
 
-def create_vector_store(chunks, persist_directory="db/chroma_db"):
-    """Create and persist ChromaDB vector store"""
-    print("Creating embeddings and storing in ChromaDB...")
 
-    embedding_model_name = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-    embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name)
-    
-    # Create ChromaDB vector store
-    print("--- Creating vector store ---")
+def create_vector_store(chunks: list, persist_directory: str = PERSIST_DIR) -> Chroma:
+    print("\nCreating embeddings and storing in ChromaDB...")
+
     vectorstore = Chroma.from_documents(
         documents=chunks,
-        embedding=embedding_model,
-        persist_directory=persist_directory, 
-        collection_metadata={"hnsw:space": "cosine"}
+        embedding=get_embeddings(),
+        persist_directory=persist_directory,
+        collection_metadata={"hnsw:space": "cosine"},
     )
-    print("--- Finished creating vector store ---")
-    
-    print(f"Vector store created and saved to {persist_directory}")
+
+    print(f"Vector store saved to '{persist_directory}'.")
     return vectorstore
+
 
 def main():
     print("Starting ingestion pipeline...")
-    # Define paths
-    docs_path = "docs"
-    persist_directory = "db/chroma_db"
-
-     # Step 1: Load documents
-    documents = load_documents(docs_path)
-
-    # Step 2: Split into chunks
-    chunks = split_documents(documents)  
-
-    # # Step 3: Create vector store
-    vectorstore = create_vector_store(chunks, persist_directory)
-    
-    print("\n✅ Ingestion complete! Your documents are now ready for RAG queries.")
+    documents = load_documents("docs")
+    chunks = split_documents(documents)
+    vectorstore = create_vector_store(chunks)
+    print("\nIngestion complete! Documents are ready for RAG queries.")
     return vectorstore
-
 
 
 if __name__ == "__main__":
