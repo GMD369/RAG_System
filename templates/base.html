@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}RAG System{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">🧠</span>
+    <div>
+      <div class="brand-title">RAG System</div>
+      <div class="brand-sub">Interactive Pipeline Tour</div>
+    </div>
+  </div>
+
+  <ul class="nav-list">
+    <li><a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+      <span class="nav-icon">🏠</span><span>Overview</span>
+    </a></li>
+
+    <li class="nav-section">INGESTION</li>
+    <li><a href="/ingestion" class="nav-item {% if request.path == '/ingestion' %}active{% endif %}">
+      <span class="nav-icon">📥</span><span>Ch 1 · Ingest Documents</span>
+    </a></li>
+
+    <li class="nav-section">RETRIEVAL & ANSWERING</li>
+    <li><a href="/retrieval" class="nav-item {% if request.path == '/retrieval' %}active{% endif %}">
+      <span class="nav-icon">🔍</span><span>Ch 2 · Retrieve Context</span>
+    </a></li>
+    <li><a href="/answer" class="nav-item {% if request.path == '/answer' %}active{% endif %}">
+      <span class="nav-icon">💬</span><span>Ch 3 · Generate Answer</span>
+    </a></li>
+
+    <li class="nav-section">ADVANCED</li>
+    <li><a href="/history" class="nav-item {% if request.path == '/history' %}active{% endif %}">
+      <span class="nav-icon">🗂️</span><span>Ch 4 · History-Aware Chat</span>
+    </a></li>
+    <li><a href="/chunking" class="nav-item {% if request.path == '/chunking' %}active{% endif %}">
+      <span class="nav-icon">✂️</span><span>Ch 5 · Chunking Strategies</span>
+    </a></li>
+  </ul>
+
+  <div class="sidebar-footer">
+    <span class="stack-badge">LangChain</span>
+    <span class="stack-badge">ChromaDB</span>
+    <span class="stack-badge">HuggingFace</span>
+  </div>
+</nav>
+
+<main class="main">
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

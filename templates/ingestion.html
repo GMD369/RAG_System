@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Chapter 1 · Ingestion Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-hero" style="--accent:#f59e0b">
+  <div class="ph-chapter">Chapter 01</div>
+  <h1>Teaching the AI Your Documents</h1>
+  <p>
+    Before the AI can answer anything, it must <em>read</em> your documents.
+    But language models can't search through raw files — they think in numbers.
+    The ingestion pipeline converts every page into a list of floating-point vectors
+    that capture meaning, then stores them so they can be searched in milliseconds.
+  </p>
+</div>
+
+<!-- Pipeline diagram -->
+<section class="section">
+  <h2 class="section-title">How it works — step by step</h2>
+  <div class="pipeline-flow" id="ingest-flow">
+
+    <div class="pnode" id="pn-1" data-step="1">
+      <div class="pnode-icon" style="background:#f59e0b22;border-color:#f59e0b">📁</div>
+      <div class="pnode-title">Documents</div>
+      <div class="pnode-desc">{{ docs|length }} file(s) in <code>docs/</code><br>
+        {% for d in docs %}<span class="file-badge">{{ d }}</span>{% endfor %}
+      </div>
+    </div>
+
+    <div class="pnode-connector" id="con-1"></div>
+
+    <div class="pnode" id="pn-2" data-step="2">
+      <div class="pnode-icon" style="background:#3b82f622;border-color:#3b82f6">🔄</div>
+      <div class="pnode-title">Document Loader</div>
+      <div class="pnode-desc"><code>TextLoader</code> for .txt<br><code>PyPDFLoader</code> for .pdf<br>via <code>DirectoryLoader</code></div>
+    </div>
+
+    <div class="pnode-connector" id="con-2"></div>
+
+    <div class="pnode" id="pn-3" data-step="3">
+      <div class="pnode-icon" style="background:#8b5cf622;border-color:#8b5cf6">✂️</div>
+      <div class="pnode-title">Text Splitter</div>
+      <div class="pnode-desc"><code>RecursiveCharacterTextSplitter</code><br>chunk_size=800<br>chunk_overlap=150</div>
+    </div>
+
+    <div class="pnode-connector" id="con-3"></div>
+
+    <div class="pnode" id="pn-4" data-step="4">
+      <div class="pnode-icon" style="background:#ec489922;border-color:#ec4899">🧮</div>
+      <div class="pnode-title">Embeddings</div>
+      <div class="pnode-desc"><code>all-MiniLM-L6-v2</code><br>HuggingFace<br>384 dimensions</div>
+    </div>
+
+    <div class="pnode-connector" id="con-4"></div>
+
+    <div class="pnode" id="pn-5" data-step="5">
+      <div class="pnode-icon" style="background:#10b98122;border-color:#10b981">🗄️</div>
+      <div class="pnode-title">ChromaDB</div>
+      <div class="pnode-desc">Persisted to <code>db/chroma_db/</code><br>Cosine similarity index<br>HNSW graph</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- Why overlap matters -->
+<section class="section">
+  <h2 class="section-title">Why overlap=150?</h2>
+  <div class="explainer-box">
+    <div class="explainer-visual">
+      <div class="chunk-overlap-demo">
+        <div class="cod-chunk" style="width:60%">Chunk A <span class="cod-tail">…tail text…</span></div>
+        <div class="cod-overlap">← 150 chars shared →</div>
+        <div class="cod-chunk" style="margin-left:30%"><span class="cod-head">…tail text…</span> Chunk B</div>
+      </div>
+    </div>
+    <p>Without overlap, a sentence that straddles two chunks would be split in half — the AI sees only a fragment and misses the answer.
+       Overlapping ensures every sentence appears whole in at least one chunk.</p>
+  </div>
+</section>
+
+<!-- Run it -->
+<section class="section">
+  <h2 class="section-title">Run the Pipeline</h2>
+  <p class="muted">Click the button to load documents, chunk them, embed, and store — watch each stage light up.</p>
+  <button class="btn-primary" id="run-ingest-btn" onclick="runIngestion()">▶ Run Ingestion Pipeline</button>
+
+  <div class="step-log" id="ingest-steps" style="display:none">
+    <div class="step-log-inner" id="step-log-inner"></div>
+  </div>
+
+  <div class="result-box" id="ingest-result" style="display:none"></div>
+  <div class="log-box" id="ingest-log" style="display:none"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const INGEST_STEPS = 5;
+
+async function runIngestion() {
+  const btn = document.getElementById('run-ingest-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+
+  resetFlow('ingest-flow', INGEST_STEPS);
+  showEl('ingest-steps');
+  document.getElementById('step-log-inner').innerHTML = '';
+  hideEl('ingest-result');
+  hideEl('ingest-log');
+
+  // animate while request runs
+  const anim = animateFlow('ingest-flow', INGEST_STEPS, 900);
+
+  try {
+    const res = await postJSON('/api/ingest', {});
+    clearInterval(anim);
+
+    if (res.success) {
+      completeFlow('ingest-flow', INGEST_STEPS);
+      res.steps.forEach((s, i) => appendStep(i + 1, s.label, s.detail, true));
+      showEl('ingest-result');
+      document.getElementById('ingest-result').innerHTML = `
+        <div class="result-success">
+          ✅ Ingestion complete!
+          <span class="result-stat">${res.doc_count} documents</span>
+          <span class="result-stat">${res.chunk_count} chunks</span>
+          stored in ChromaDB.
+        </div>`;
+    } else {
+      errorFlow('ingest-flow');
+      showEl('ingest-result');
+      document.getElementById('ingest-result').innerHTML = `<div class="result-error">❌ ${escHtml(res.error)}</div>`;
+    }
+
+    if (res.log) {
+      showEl('ingest-log');
+      document.getElementById('ingest-log').textContent = res.log;
+    }
+  } catch (e) {
+    clearInterval(anim);
+    errorFlow('ingest-flow');
+    alert('Request failed: ' + e.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '▶ Run Ingestion Pipeline';
+}
+
+function appendStep(num, label, detail, ok) {
+  const el = document.getElementById('step-log-inner');
+  el.innerHTML += `<div class="slog-item ${ok ? 'ok' : 'err'}">
+    <span class="slog-num">${num}</span>
+    <span class="slog-label">${escHtml(label)}</span>
+    <span class="slog-detail">${escHtml(detail)}</span>
+  </div>`;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Chapter 5 · Chunking Strategies{% endblock %}
+
+{% block content %}
+<div class="page-hero" style="--accent:#10b981">
+  <div class="ph-chapter">Chapter 05</div>
+  <h1>How Text Gets Broken Down</h1>
+  <p>
+    The way you split documents dramatically affects retrieval quality.
+    Chunks that are too big waste the LLM's context window.
+    Chunks that are too small lose surrounding context.
+    And <em>how</em> you split matters: a naive character split might cut mid-sentence,
+    while a semantic splitter keeps related ideas together.
+  </p>
+</div>
+
+<!-- Method explanations -->
+<section class="section">
+  <h2 class="section-title">Four Approaches</h2>
+  <div class="method-grid">
+    <div class="method-card" style="--mc:#f59e0b">
+      <div class="mc-icon">🔪</div>
+      <h3>Character Splitter</h3>
+      <p>Splits on a single separator (e.g. double newline). Fast but brittle — long paragraphs without the separator won't be split at all.</p>
+      <span class="mc-tag">Simplest</span>
+    </div>
+    <div class="method-card" style="--mc:#3b82f6">
+      <div class="mc-icon">🔄</div>
+      <h3>Recursive Character</h3>
+      <p>Tries separators in order: <code>\n\n → \n → . → space → ""</code>. Gracefully degrades — always produces correctly sized chunks.</p>
+      <span class="mc-tag">Recommended</span>
+    </div>
+    <div class="method-card" style="--mc:#ec4899">
+      <div class="mc-icon">🧮</div>
+      <h3>Semantic Chunker</h3>
+      <p>Embeds every sentence, then splits where embedding similarity drops sharply. Topic-aware splits — no arbitrary size limit needed.</p>
+      <span class="mc-tag">Smart</span>
+    </div>
+    <div class="method-card" style="--mc:#8b5cf6">
+      <div class="mc-icon">🤖</div>
+      <h3>Agentic Chunker</h3>
+      <p>Sends the text to an LLM and asks it to decide boundaries. Most flexible — the model understands context and narrative flow.</p>
+      <span class="mc-tag">Expensive</span>
+    </div>
+  </div>
+</section>
+
+<!-- Try it -->
+<section class="section">
+  <h2 class="section-title">Compare Methods Live</h2>
+
+  <div class="chunk-controls">
+    <textarea class="chunk-textarea" id="chunk-text" rows="8">Tesla's Q3 Results
+Tesla reported record revenue of $25.2B in Q3 2024.
+The company exceeded analyst expectations by 15%.
+Revenue growth was driven by strong vehicle deliveries.
+
+Model Y Performance
+The Model Y became the best-selling vehicle globally, with 350,000 units sold.
+Customer satisfaction ratings reached an all-time high of 96%.
+Model Y now represents 60% of Tesla's total vehicle sales.
+
+Production Challenges
+Supply chain issues caused a 12% increase in production costs.
+Tesla is working to diversify its supplier base.
+New manufacturing techniques are being implemented to reduce costs.</textarea>
+
+    <div class="method-buttons">
+      <button class="method-btn active" data-method="character" onclick="selectMethod(this,'character')">🔪 Character</button>
+      <button class="method-btn" data-method="recursive" onclick="selectMethod(this,'recursive')">🔄 Recursive</button>
+      <button class="method-btn" data-method="semantic" onclick="selectMethod(this,'semantic')">🧮 Semantic</button>
+      <button class="method-btn" data-method="agentic" onclick="selectMethod(this,'agentic')">🤖 Agentic (uses LLM)</button>
+    </div>
+
+    <button class="btn-primary" id="chunk-btn" onclick="runChunking()">✂️ Split Text</button>
+  </div>
+
+  <div id="chunk-status" style="display:none" class="loading-bar"><span>Splitting…</span></div>
+
+  <div id="chunk-results" style="display:none">
+    <div class="chunk-header">
+      <h3>Results — <span id="chunk-method-label"></span></h3>
+      <span class="badge" id="chunk-count-badge"></span>
+    </div>
+    <div id="chunk-blocks" class="chunk-blocks"></div>
+  </div>
+
+  <div id="chunk-error" style="display:none" class="result-error"></div>
+</section>
+
+<!-- Side-by-side comparison -->
+<section class="section">
+  <h2 class="section-title">When to Use Each</h2>
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Method</th><th>Speed</th><th>API Cost</th><th>Quality</th><th>Best For</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Character</td><td>⚡ Fastest</td><td>Free</td><td>⭐⭐</td><td>Well-structured docs with consistent newlines</td></tr>
+      <tr><td>Recursive</td><td>⚡ Fast</td><td>Free</td><td>⭐⭐⭐</td><td>General purpose — default choice</td></tr>
+      <tr><td>Semantic</td><td>🐢 Slow (embedding)</td><td>Free*</td><td>⭐⭐⭐⭐</td><td>Dense prose where topics shift gradually</td></tr>
+      <tr><td>Agentic</td><td>🐌 Slowest</td><td>💰 LLM tokens</td><td>⭐⭐⭐⭐⭐</td><td>Complex documents where structure matters most</td></tr>
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedMethod = 'character';
+
+function selectMethod(el, method) {
+  document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  selectedMethod = method;
+}
+
+const METHOD_LABELS = {
+  character: '🔪 Character Splitter',
+  recursive: '🔄 Recursive Character Splitter',
+  semantic: '🧮 Semantic Chunker',
+  agentic: '🤖 Agentic Chunker',
+};
+
+const CHUNK_COLORS = ['#f59e0b','#3b82f6','#ec4899','#8b5cf6','#10b981','#f97316','#06b6d4','#84cc16'];
+
+async function runChunking() {
+  const text = document.getElementById('chunk-text').value.trim();
+  if (!text) return;
+
+  const btn = document.getElementById('chunk-btn');
+  btn.disabled = true;
+
+  showEl('chunk-status');
+  hideEl('chunk-results');
+  hideEl('chunk-error');
+  document.getElementById('chunk-status').querySelector('span').textContent =
+    selectedMethod === 'agentic' ? 'Asking LLM to chunk…' :
+    selectedMethod === 'semantic' ? 'Computing embeddings…' : 'Splitting…';
+
+  try {
+    const res = await postJSON('/api/chunk', { text, method: selectedMethod });
+    hideEl('chunk-status');
+
+    if (res.success) {
+      showEl('chunk-results');
+      document.getElementById('chunk-method-label').textContent = METHOD_LABELS[selectedMethod];
+      document.getElementById('chunk-count-badge').textContent = res.count + ' chunk(s)';
+
+      const blocks = document.getElementById('chunk-blocks');
+      blocks.innerHTML = '';
+      res.chunks.forEach((c, i) => {
+        const color = CHUNK_COLORS[i % CHUNK_COLORS.length];
+        blocks.innerHTML += `
+          <div class="chunk-block" style="--cc:${color}">
+            <div class="cb-header">
+              <span class="cb-num">Chunk ${i+1}</span>
+              <span class="cb-len">${c.length} chars</span>
+            </div>
+            <div class="cb-content">${escHtml(c.content)}</div>
+          </div>`;
+      });
+    } else {
+      showEl('chunk-error');
+      document.getElementById('chunk-error').textContent = '❌ ' + res.error;
+    }
+  } catch (e) {
+    hideEl('chunk-status');
+    showEl('chunk-error');
+    document.getElementById('chunk-error').textContent = '❌ Request failed: ' + e.message;
+  }
+
+  btn.disabled = false;
+}
+</script>
+{% endblock %}

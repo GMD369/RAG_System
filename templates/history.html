@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Chapter 4 · History-Aware Chat{% endblock %}
+
+{% block content %}
+<div class="page-hero" style="--accent:#8b5cf6">
+  <div class="ph-chapter">Chapter 04</div>
+  <h1>Having a Real Conversation</h1>
+  <p>
+    Basic RAG treats every question as independent. But real conversations have context —
+    "Who succeeded him?" only makes sense if you know who "him" refers to.
+    History-aware RAG detects ambiguous follow-ups, rewrites them into self-contained queries,
+    then retrieves and answers using the full conversation context.
+  </p>
+</div>
+
+<!-- Pipeline -->
+<section class="section">
+  <h2 class="section-title">The extra step: Query Rewriting</h2>
+  <div class="pipeline-flow" id="hist-flow">
+
+    <div class="pnode" id="pn-1" data-step="1">
+      <div class="pnode-icon" style="background:#f59e0b22;border-color:#f59e0b">💬</div>
+      <div class="pnode-title">User Message</div>
+      <div class="pnode-desc">May reference prior turns<br><em>"What about his successor?"</em></div>
+    </div>
+
+    <div class="pnode-connector" id="con-1"></div>
+
+    <div class="pnode" id="pn-2" data-step="2">
+      <div class="pnode-icon" style="background:#8b5cf622;border-color:#8b5cf6">🔄</div>
+      <div class="pnode-title">Query Rewriter</div>
+      <div class="pnode-desc">LLM reads chat history<br>→ standalone search query<br><em>"Who succeeded Elon Musk as Tesla CEO?"</em></div>
+    </div>
+
+    <div class="pnode-connector" id="con-2"></div>
+
+    <div class="pnode" id="pn-3" data-step="3">
+      <div class="pnode-icon" style="background:#3b82f622;border-color:#3b82f6">🔍</div>
+      <div class="pnode-title">Retrieval</div>
+      <div class="pnode-desc">Search with rewritten query<br>cosine similarity</div>
+    </div>
+
+    <div class="pnode-connector" id="con-3"></div>
+
+    <div class="pnode" id="pn-4" data-step="4">
+      <div class="pnode-icon" style="background:#ec489922;border-color:#ec4899">🤖</div>
+      <div class="pnode-title">LLM + History</div>
+      <div class="pnode-desc">Context + full chat history<br>→ coherent answer</div>
+    </div>
+
+    <div class="pnode-connector" id="con-4"></div>
+
+    <div class="pnode" id="pn-5" data-step="5">
+      <div class="pnode-icon" style="background:#10b98122;border-color:#10b981">💡</div>
+      <div class="pnode-title">Answer</div>
+      <div class="pnode-desc">Contextually grounded<br>aware of full conversation</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- Chat UI -->
+<section class="section">
+  <h2 class="section-title">Live Chat</h2>
+  <p class="muted">Try asking a question, then follow up with a vague reference like "Who founded it?" or "When did that happen?"</p>
+
+  <div class="chat-container">
+    <div class="chat-messages" id="chat-messages">
+      <div class="chat-msg assistant">
+        <div class="msg-avatar">🤖</div>
+        <div class="msg-body">
+          <div class="msg-text">Hello! Ask me anything about the companies in the knowledge base: Tesla, SpaceX, NVIDIA, Microsoft, Google. I remember our conversation, so feel free to use follow-up questions!</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="rewrite-indicator" style="display:none" class="rewrite-indicator">
+      🔄 Rewriting query: <em id="rewrite-text"></em>
+    </div>
+
+    <div class="chat-input-row">
+      <input class="chat-input" id="chat-input" type="text"
+        placeholder="Ask a question…"
+        onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="btn-primary" id="chat-btn" onclick="sendChat()">Send</button>
+      <button class="btn-secondary" onclick="clearChat()">Clear</button>
+    </div>
+  </div>
+
+  <div class="starter-suggestions">
+    <p class="muted" style="margin-bottom:8px">Try this conversation flow:</p>
+    <button class="sample-q" onclick="setChat('Tell me about Tesla\'s early history')">Tell me about Tesla's early history</button>
+    <button class="sample-q" onclick="setChat('Who succeeded him as CEO?')">Who succeeded him as CEO? ← (ambiguous follow-up)</button>
+    <button class="sample-q" onclick="setChat('What was SpaceX\'s first rocket called?')">What was SpaceX's first rocket called?</button>
+    <button class="sample-q" onclick="setChat('When did it first reach orbit?')">When did it first reach orbit? ← (another follow-up)</button>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chatHistory = [];
+const HIST_STEPS = 5;
+
+function setChat(text) {
+  document.getElementById('chat-input').value = text;
+}
+
+function clearChat() {
+  chatHistory = [];
+  document.getElementById('chat-messages').innerHTML = `
+    <div class="chat-msg assistant">
+      <div class="msg-avatar">🤖</div>
+      <div class="msg-body">
+        <div class="msg-text">Conversation cleared. Start fresh!</div>
+      </div>
+    </div>`;
+  hideEl('rewrite-indicator');
+  resetFlow('hist-flow', HIST_STEPS);
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const message = input.value.trim();
+  if (!message) return;
+
+  input.value = '';
+  appendUserMsg(message);
+
+  const btn = document.getElementById('chat-btn');
+  btn.disabled = true;
+
+  resetFlow('hist-flow', HIST_STEPS);
+  hideEl('rewrite-indicator');
+
+  const anim = animateFlow('hist-flow', HIST_STEPS, 800);
+  appendThinking();
+
+  try {
+    const res = await postJSON('/api/chat', { message, history: chatHistory });
+    clearInterval(anim);
+    removeThinking();
+
+    if (res.success) {
+      completeFlow('hist-flow', HIST_STEPS);
+
+      if (res.rewritten) {
+        showEl('rewrite-indicator');
+        document.getElementById('rewrite-text').textContent = res.search_question;
+      } else {
+        hideEl('rewrite-indicator');
+      }
+
+      appendAssistantMsg(res.reply, res.context, res.rewritten ? res.search_question : null);
+
+      chatHistory.push({ role: 'user', content: message });
+      chatHistory.push({ role: 'assistant', content: res.reply });
+    } else {
+      errorFlow('hist-flow');
+      appendAssistantMsg('❌ Error: ' + res.error, [], null);
+    }
+  } catch (e) {
+    clearInterval(anim);
+    errorFlow('hist-flow');
+    removeThinking();
+    appendAssistantMsg('❌ Request failed: ' + e.message, [], null);
+  }
+
+  btn.disabled = false;
+  scrollChat();
+}
+
+function appendUserMsg(text) {
+  const box = document.getElementById('chat-messages');
+  box.innerHTML += `
+    <div class="chat-msg user">
+      <div class="msg-body">
+        <div class="msg-text">${escHtml(text)}</div>
+      </div>
+      <div class="msg-avatar">🧑</div>
+    </div>`;
+  scrollChat();
+}
+
+function appendThinking() {
+  const box = document.getElementById('chat-messages');
+  box.innerHTML += `
+    <div class="chat-msg assistant" id="thinking-msg">
+      <div class="msg-avatar">🤖</div>
+      <div class="msg-body"><div class="msg-text thinking-dots">Thinking<span>.</span><span>.</span><span>.</span></div></div>
+    </div>`;
+  scrollChat();
+}
+
+function removeThinking() {
+  const el = document.getElementById('thinking-msg');
+  if (el) el.remove();
+}
+
+function appendAssistantMsg(text, context, rewritten) {
+  const box = document.getElementById('chat-messages');
+  let ctxHtml = '';
+  if (context && context.length > 0) {
+    ctxHtml = `<details class="msg-context">
+      <summary>📄 Sources used (${context.length})</summary>
+      ${context.map(c => `<div class="msg-ctx-item"><strong>${escHtml(c.source)}</strong><br><span>${escHtml(c.content.substring(0,200))}…</span></div>`).join('')}
+    </details>`;
+  }
+  const rewriteHtml = rewritten
+    ? `<div class="msg-rewrite">🔄 Searched as: <em>${escHtml(rewritten)}</em></div>` : '';
+
+  box.innerHTML += `
+    <div class="chat-msg assistant">
+      <div class="msg-avatar">🤖</div>
+      <div class="msg-body">
+        ${rewriteHtml}
+        <div class="msg-text">${escHtml(text)}</div>
+        ${ctxHtml}
+      </div>
+    </div>`;
+  scrollChat();
+}
+
+function scrollChat() {
+  const box = document.getElementById('chat-messages');
+  box.scrollTop = box.scrollHeight;
+}
+</script>
+{% endblock %}

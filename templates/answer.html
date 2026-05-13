@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Chapter 3 · Answer Generation{% endblock %}
+
+{% block content %}
+<div class="page-hero" style="--accent:#ec4899">
+  <div class="ph-chapter">Chapter 03</div>
+  <h1>Crafting a Grounded Answer</h1>
+  <p>
+    Retrieved chunks alone don't give you an answer — they give you raw text.
+    Answer generation stitches the question and context together into a carefully engineered prompt,
+    then sends it to a large language model. The model is instructed to answer
+    <em>only from the provided context</em> and cite its sources.
+  </p>
+</div>
+
+<!-- Pipeline -->
+<section class="section">
+  <h2 class="section-title">From question to answer — the full RAG loop</h2>
+  <div class="pipeline-flow" id="ans-flow">
+
+    <div class="pnode" id="pn-1" data-step="1">
+      <div class="pnode-icon" style="background:#f59e0b22;border-color:#f59e0b">❓</div>
+      <div class="pnode-title">User Question</div>
+      <div class="pnode-desc">Plain English input</div>
+    </div>
+
+    <div class="pnode-connector" id="con-1"></div>
+
+    <div class="pnode" id="pn-2" data-step="2">
+      <div class="pnode-icon" style="background:#3b82f622;border-color:#3b82f6">🔍</div>
+      <div class="pnode-title">Retrieval</div>
+      <div class="pnode-desc">Top-k chunks from ChromaDB<br>cosine ≥ 0.3</div>
+    </div>
+
+    <div class="pnode-connector" id="con-2"></div>
+
+    <div class="pnode" id="pn-3" data-step="3">
+      <div class="pnode-icon" style="background:#8b5cf622;border-color:#8b5cf6">📝</div>
+      <div class="pnode-title">Prompt Template</div>
+      <div class="pnode-desc">System instructions<br>+ context + question<br>via <code>ChatPromptTemplate</code></div>
+    </div>
+
+    <div class="pnode-connector" id="con-3"></div>
+
+    <div class="pnode" id="pn-4" data-step="4">
+      <div class="pnode-icon" style="background:#ec489922;border-color:#ec4899">🤖</div>
+      <div class="pnode-title">LLM</div>
+      <div class="pnode-desc">Grok / Groq<br>temperature = 0<br>context-restricted</div>
+    </div>
+
+    <div class="pnode-connector" id="con-4"></div>
+
+    <div class="pnode" id="pn-5" data-step="5">
+      <div class="pnode-icon" style="background:#10b98122;border-color:#10b981">💡</div>
+      <div class="pnode-title">Cited Answer</div>
+      <div class="pnode-desc">Grounded response<br>with source citations</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- The system prompt -->
+<section class="section">
+  <h2 class="section-title">The System Prompt (Why the AI "stays on topic")</h2>
+  <div class="prompt-box">
+    <div class="prompt-label">SYSTEM</div>
+    <pre>You are a strict RAG assistant. Answer ONLY using the provided context.
+Do not use outside knowledge. If the answer is not explicitly present
+in the context, reply exactly:
+  "I don't know based on the provided documents."
+When you answer, include a short source citation using the source file name(s).</pre>
+    <div class="prompt-label mt">HUMAN</div>
+    <pre>Question:
+{question}
+
+Context:
+{context}</pre>
+  </div>
+</section>
+
+<!-- Try it -->
+<section class="section">
+  <h2 class="section-title">Ask a Question</h2>
+  <div class="query-row">
+    <input class="query-input" id="ans-query" type="text"
+      placeholder="e.g. How much did Microsoft pay to acquire GitHub?"
+      value="How much did Microsoft pay to acquire GitHub?">
+    <button class="btn-primary" id="ans-btn" onclick="runAnswer()">💬 Ask</button>
+  </div>
+
+  <div id="ans-status" style="display:none" class="loading-bar"><span>Retrieving &amp; generating…</span></div>
+
+  <div id="ans-output" style="display:none">
+    <div class="answer-panel">
+      <div class="ap-label">💡 Answer</div>
+      <div id="ans-text" class="ap-text"></div>
+    </div>
+
+    <details class="context-details" id="ans-context-wrap">
+      <summary>📄 View Retrieved Context (<span id="ans-ctx-count"></span> chunks)</summary>
+      <div id="ans-context-cards" class="doc-cards mt"></div>
+    </details>
+  </div>
+
+  <div id="ans-error" style="display:none" class="result-error"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ANS_STEPS = 5;
+
+async function runAnswer() {
+  const query = document.getElementById('ans-query').value.trim();
+  if (!query) return;
+
+  const btn = document.getElementById('ans-btn');
+  btn.disabled = true;
+
+  resetFlow('ans-flow', ANS_STEPS);
+  showEl('ans-status');
+  hideEl('ans-output');
+  hideEl('ans-error');
+
+  const anim = animateFlow('ans-flow', ANS_STEPS, 1000);
+
+  try {
+    const res = await postJSON('/api/answer', { query });
+    clearInterval(anim);
+    hideEl('ans-status');
+
+    if (res.success) {
+      completeFlow('ans-flow', ANS_STEPS);
+      showEl('ans-output');
+      document.getElementById('ans-text').textContent = res.answer;
+      document.getElementById('ans-ctx-count').textContent = res.doc_count;
+      const ctxCards = document.getElementById('ans-context-cards');
+      ctxCards.innerHTML = '';
+      res.context.forEach((c, i) => {
+        ctxCards.innerHTML += `
+          <div class="doc-card">
+            <div class="dc-header">
+              <span class="dc-num">#${i+1}</span>
+              <span class="dc-source">📄 ${escHtml(c.source)}</span>
+            </div>
+            <div class="dc-content">${escHtml(c.content)}</div>
+          </div>`;
+      });
+    } else {
+      errorFlow('ans-flow');
+      showEl('ans-error');
+      document.getElementById('ans-error').textContent = '❌ ' + res.error;
+    }
+  } catch (e) {
+    clearInterval(anim);
+    errorFlow('ans-flow');
+    hideEl('ans-status');
+    alert('Request failed: ' + e.message);
+  }
+
+  btn.disabled = false;
+}
+</script>
+{% endblock %}

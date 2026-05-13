@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}RAG System · Overview{% endblock %}
+
+{% block content %}
+<div class="hero">
+  <div class="hero-badge">Interactive Tour</div>
+  <h1 class="hero-title">How a RAG System Works</h1>
+  <p class="hero-subtitle">
+    RAG (Retrieval-Augmented Generation) lets an AI answer questions using <em>your</em> documents —
+    not just its training data. Follow the chapters to see every step of the pipeline live.
+  </p>
+</div>
+
+<!-- Full pipeline diagram -->
+<section class="section">
+  <h2 class="section-title">The Complete Pipeline at a Glance</h2>
+  <div class="overview-flow">
+    <div class="overview-node" style="--c:#f59e0b">
+      <div class="ov-icon">📁</div>
+      <div class="ov-label">Your Documents</div>
+      <div class="ov-sub">TXT &amp; PDF files</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="overview-node" style="--c:#3b82f6">
+      <div class="ov-icon">✂️</div>
+      <div class="ov-label">Chunk &amp; Embed</div>
+      <div class="ov-sub">Split → Vectorise</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="overview-node" style="--c:#8b5cf6">
+      <div class="ov-icon">🗄️</div>
+      <div class="ov-label">Vector Store</div>
+      <div class="ov-sub">ChromaDB</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="overview-node" style="--c:#ec4899">
+      <div class="ov-icon">🔍</div>
+      <div class="ov-label">Retrieve</div>
+      <div class="ov-sub">Similarity search</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="overview-node" style="--c:#10b981">
+      <div class="ov-icon">🤖</div>
+      <div class="ov-label">LLM Answer</div>
+      <div class="ov-sub">Grok / Groq</div>
+    </div>
+  </div>
+</section>
+
+<!-- Chapter cards -->
+<section class="section">
+  <h2 class="section-title">Chapters</h2>
+  <div class="chapter-grid">
+
+    <a href="/ingestion" class="chapter-card" style="--accent:#f59e0b">
+      <div class="cc-num">01</div>
+      <div class="cc-icon">📥</div>
+      <h3>Ingest Documents</h3>
+      <p>Load TXT &amp; PDF files, split them into overlapping chunks, embed each chunk, and store vectors in ChromaDB.</p>
+      <span class="cc-cta">Explore →</span>
+    </a>
+
+    <a href="/retrieval" class="chapter-card" style="--accent:#3b82f6">
+      <div class="cc-num">02</div>
+      <div class="cc-icon">🔍</div>
+      <h3>Retrieve Context</h3>
+      <p>Embed the user's question, run a cosine similarity search, and pull back the most relevant document chunks.</p>
+      <span class="cc-cta">Explore →</span>
+    </a>
+
+    <a href="/answer" class="chapter-card" style="--accent:#ec4899">
+      <div class="cc-num">03</div>
+      <div class="cc-icon">💬</div>
+      <h3>Generate Answer</h3>
+      <p>Feed retrieved chunks into a structured prompt, invoke the LLM, and receive a grounded, cited answer.</p>
+      <span class="cc-cta">Explore →</span>
+    </a>
+
+    <a href="/history" class="chapter-card" style="--accent:#8b5cf6">
+      <div class="cc-num">04</div>
+      <div class="cc-icon">🗂️</div>
+      <h3>History-Aware Chat</h3>
+      <p>Maintain conversation context: ambiguous follow-up questions are rewritten into standalone queries before retrieval.</p>
+      <span class="cc-cta">Explore →</span>
+    </a>
+
+    <a href="/chunking" class="chapter-card" style="--accent:#10b981">
+      <div class="cc-num">05</div>
+      <div class="cc-icon">✂️</div>
+      <h3>Chunking Strategies</h3>
+      <p>Compare four splitting methods side-by-side: Character, Recursive, Semantic, and Agentic chunkers.</p>
+      <span class="cc-cta">Explore →</span>
+    </a>
+
+  </div>
+</section>
+
+<!-- Tech stack -->
+<section class="section">
+  <h2 class="section-title">Tech Stack</h2>
+  <div class="stack-grid">
+    <div class="stack-item"><span class="si-icon">🦜</span><strong>LangChain</strong><span>Orchestration</span></div>
+    <div class="stack-item"><span class="si-icon">🗄️</span><strong>ChromaDB</strong><span>Vector store</span></div>
+    <div class="stack-item"><span class="si-icon">🤗</span><strong>HuggingFace</strong><span>Embeddings</span></div>
+    <div class="stack-item"><span class="si-icon">⚡</span><strong>Grok / Groq</strong><span>LLM inference</span></div>
+    <div class="stack-item"><span class="si-icon">🐍</span><strong>Flask</strong><span>This web app</span></div>
+  </div>
+</section>
+{% endblock %}

@@ -1,22 +1,18 @@
-# Environment variables (contains API keys)
+# Secrets — never commit these
 .env
+.env.local
 
-# Vector database
-db/
+# Virtual environment
+.venv/
+venv/
 
-# Python
+# Python cache
 __pycache__/
 *.pyc
-*.pyo
-venv/
-.venv/
+
+# Vector database
+db/chroma_db/
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
